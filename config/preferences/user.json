@@ -1,0 +1,6 @@
+{
+  "pauseThreshold": 3.0,
+  "autoRemoveFillers": false,
+  "preferredOutputFormat": "mp4",
+  "language": "zh-CN"
+}
