@@ -16,14 +16,20 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
+# 输出目录
+output/
+
 # 媒体文件（视频处理产生的临时音频/视频）
 *.mp4
 *.wav
 *.mov
 *.avi
-!tests/*.json
+*.mp3
 
 # 编辑器配置
 .vscode/
 .idea/
 *.swp
+/FFmpeg.Windows/Windows/
+ffmpeg.exe
+ffprobe.exe

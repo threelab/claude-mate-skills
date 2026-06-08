@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Mate Skills 控制面板</title>
+    <style>
+        :root {
+            --primary: #0f7b6c;
+            --bg: #f7f6f3;
+            --surface: #ffffff;
+            --text: #191918;
+            --border: rgba(15, 15, 15, 0.1);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: var(--surface);
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h1 { margin-top: 0; font-size: 24px; color: var(--primary); }
+        .form-group { margin-bottom: 24px; }
+        label { display: block; margin-bottom: 8px; font-weight: 500; }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status-card {
+            margin-top: 24px;
+            padding: 16px;
+            background: #f0f7f6;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary);
+        }
+        .log-area {
+            margin-top: 16px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: "SF Mono", "Consolas", monospace;
+            font-size: 12px;
+            height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            gap: 12px;
+        }
+        .step-num {
+            width: 24px;
+            height: 24px;
+            background: var(--border);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .step.active .step-num { background: var(--primary); color: white; }
+        .step.done .step-num { background: #4caf50; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Claude Mate Skills 控制面板</h1>
+        <p>输入视频路径，一键开启智能剪辑流程。</p>
+
+        <div class="form-group">
+            <label for="videoPath">视频文件路径 (.mp4)</label>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="videoPath" placeholder="例如: G:\videos\my_video.mp4" style="flex: 1;">
+                <button id="browseBtn" class="btn" style="background: #666; padding: 10px 16px;">浏览...</button>
+            </div>
+        </div>
+
+        <div class="steps">
+            <div id="step-extract" class="step">
+                <div class="step-num">1</div>
+                <div class="step-label">提取音频 (FFmpeg)</div>
+            </div>
+            <div id="step-transcribe" class="step">
+                <div class="step-num">2</div>
+                <div class="step-label">语音转录 (火山引擎)</div>
+            </div>
+            <div id="step-analyze" class="step">
+                <div class="step-num">3</div>
+                <div class="step-label">语义分析 & 预选</div>
+            </div>
+            <div id="step-review" class="step">
+                <div class="step-num">4</div>
+                <div class="step-label">人工审核 & 执行剪辑</div>
+            </div>
+        </div>
+
+        <button id="startBtn" class="btn">开始处理</button>
+        <button id="resumeBtn" class="btn" style="background:#ff9800;">跳过提取，直接转录</button>
+        <button id="openReviewBtn" class="btn" style="display:none; background:#2196f3;">打开审核页面</button>
+
+        <div id="statusArea" class="status-card" style="display:none;">
+            <div id="statusText">正在准备...</div>
+            <div id="logArea" class="log-area"></div>
+        </div>
+
+        <!-- 新增 AI 对话框 -->
+        <div class="chat-section" style="margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px;">
+            <h3>🤖 Claude Mate 助手</h3>
+            <div id="chatMessages" style="height: 200px; overflow-y: auto; background: #f9f9f9; padding: 12px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; border: 1px solid var(--border);">
+                <div style="color: #888;">你可以试着说：“帮我分析刚才那个视频里的口误” 或者 “帮我把这个视频剪了”</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="chatInput" placeholder="输入指令..." style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                <button id="sendBtn" class="btn" style="background: var(--text);">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const chatMessages = document.getElementById('chatMessages');
+
+        function addMessage(role, text) {
+            const div = document.createElement('div');
+            div.style.marginBottom = '8px';
+            div.innerHTML = `<strong>${role}:</strong> ${text}`;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        sendBtn.onclick = async () => {
+            const text = chatInput.value.trim();
+            if (!text) return;
+            
+            addMessage('你', text);
+            chatInput.value = '';
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        message: text,
+                        videoPath: videoPathInput.value 
+                    })
+                }).then(r => r.json());
+
+                if (res.reply) {
+                    addMessage('AI', res.reply);
+                    if (res.action === 'run_workflow') {
+                        runWorkflow(false);
+                    }
+                }
+            } catch (err) {
+                addMessage('系统', '对话失败: ' + err.message);
+            }
+        };
+
+        chatInput.onkeydown = (e) => { if(e.key === 'Enter') sendBtn.onclick(); };
+        const videoPathInput = document.getElementById('videoPath');
+        const browseBtn = document.getElementById('browseBtn');
+        const startBtn = document.getElementById('startBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
+        const openReviewBtn = document.getElementById('openReviewBtn');
+        const statusArea = document.getElementById('statusArea');
+        const statusText = document.getElementById('statusText');
+        const logArea = document.getElementById('logArea');
+
+        function appendLog(msg) {
+            const line = document.createElement('div');
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logArea.appendChild(line);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function setStep(id, status) {
+            const el = document.getElementById(`step-${id}`);
+            el.className = `step ${status}`;
+        }
+
+        let currentReviewUrl = '';
+
+        browseBtn.onclick = async () => {
+            try {
+                const res = await fetch('/api/browse', { method: 'POST' }).then(r => r.json());
+                if (res.success && res.path && res.path.trim() !== "") {
+                    videoPathInput.value = res.path;
+                    appendLog(`📁 已选择文件: ${res.path}`);
+                }
+            } catch (err) {
+                console.error('选择文件失败', err);
+            }
+        };
+
+        startBtn.onclick = async () => {
+            runWorkflow(false);
+        };
+
+        resumeBtn.onclick = async () => {
+            runWorkflow(true);
+        };
+
+        async function runWorkflow(skipExtract) {
+            const path = videoPathInput.value.trim();
+            if (!path) return alert('请输入视频路径');
+
+            console.log('Original path:', path);
+            
+            startBtn.disabled = true;
+            resumeBtn.disabled = true;
+            statusArea.style.display = 'block';
+            logArea.innerHTML = '';
+            appendLog(skipExtract ? '⏩ 跳过提取，直接开始后续流程...' : '🚀 流程开始...');
+
+            try {
+                // Step 1: Extract
+                if (!skipExtract) {
+                    setStep('extract', 'active');
+                    statusText.innerText = '正在提取音频...';
+                    const resp1 = await fetch('/api/extract', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ videoPath: path })
+                    });
+                    
+                    if (!resp1.ok) {
+                        const errorData = await resp1.json().catch(() => ({ error: '服务器内部错误' }));
+                        throw new Error(errorData.error || `HTTP ${resp1.status}`);
+                    }
+                    
+                    const res1 = await resp1.json();
+                    if (!res1.success) throw new Error(res1.error);
+                    appendLog('✅ 音频提取完成');
+                    setStep('extract', 'done');
+                } else {
+                    appendLog('ℹ️ 已跳过提取音频步骤');
+                    setStep('extract', 'done');
+                }
+
+                // Step 2: Transcribe
+                setStep('transcribe', 'active');
+                statusText.innerText = '正在调用火山引擎转录...';
+                appendLog('等待转录任务完成 (通常需要 1-2 分钟)...');
+                const resp2 = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ videoPath: path })
+                });
+                
+                if (!resp2.ok) {
+                    const errorData = await resp2.json().catch(() => ({ error: '服务器内部错误' }));
+                    throw new Error(errorData.error || `HTTP ${resp2.status}`);
+                }
+                
+                const res2 = await resp2.json();
+                if (!res2.success) throw new Error(res2.error);
+                appendLog('✅ 语音转录完成');
+                setStep('transcribe', 'done');
+
+                // Step 3: Analyze
+                setStep('analyze', 'active');
+                statusText.innerText = '正在进行语义分析...';
+                const resp3 = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ videoPath: path })
+                });
+                
+                if (!resp3.ok) {
+                    const errorData = await resp3.json().catch(() => ({ error: '服务器内部错误' }));
+                    throw new Error(errorData.error || `HTTP ${resp3.status}`);
+                }
+                
+                const res3 = await resp3.json();
+                if (!res3.success) throw new Error(res3.error);
+                appendLog('✅ 语义分析完成');
+                setStep('analyze', 'done');
+
+                // Step 4: Finalize
+                setStep('review', 'active');
+                statusText.innerText = '所有准备工作已就绪！';
+                appendLog('🎉 请点击下方按钮进入审核页面');
+                
+                currentReviewUrl = res3.reviewUrl;
+                openReviewBtn.style.display = 'inline-block';
+                startBtn.style.display = 'none';
+                resumeBtn.style.display = 'none';
+
+            } catch (err) {
+                let errorMsg = err.message;
+                if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+                    errorMsg = '网络错误：无法连接到服务器。请检查后端服务是否已启动（端口 3005）。';
+                }
+                appendLog(`❌ 错误: ${errorMsg}`);
+                statusText.innerText = '流程中断，请检查日志';
+                startBtn.disabled = false;
+                resumeBtn.disabled = false;
+            }
+        };
+
+        openReviewBtn.onclick = () => {
+            window.open(currentReviewUrl, '_blank');
+        };
+    </script>
+</body>
+</html>
