@@ -1,6 +1,19 @@
 {
-  "pauseThreshold": 3.0,
-  "autoRemoveFillers": false,
-  "preferredOutputFormat": "mp4",
-  "language": "zh-CN"
+  "pauses": {
+    "keepThreshold": 0.8,
+    "shrinkThreshold": 2.0,
+    "maxSilenceAllowed": 3.0
+  },
+  "fillers": {
+    "aggressiveMode": true,
+    "keepEmotionalWords": true
+  },
+  "logic": {
+    "preferLaterVersion": true,
+    "crossFadeDuration": 0.1
+  },
+  "output": {
+    "format": "mp4",
+    "language": "zh-CN"
+  }
 }
