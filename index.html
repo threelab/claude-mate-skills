@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>口播视频智能剪辑</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #0f0f0f;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 30px 0;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #888;
+            margin-top: 8px;
+            font-size: 14px;
+        }
+
+        .upload-section {
+            background: #1a1a1a;
+            border: 2px dashed #333;
+            border-radius: 16px;
+            padding: 60px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin-bottom: 30px;
+        }
+
+        .upload-section:hover {
+            border-color: #667eea;
+            background: #1a1a1a;
+        }
+
+        .upload-section.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            color: #ccc;
+        }
+
+        .upload-text span {
+            color: #667eea;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .video-preview {
+            display: none;
+            background: #1a1a1a;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .video-preview.active {
+            display: block;
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+        }
+
+        .video-container video {
+            width: 100%;
+            display: block;
+        }
+
+        .video-info {
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+        }
+
+        .video-name {
+            font-size: 14px;
+            color: #ccc;
+            max-width: 70%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .video-duration {
+            font-size: 14px;
+            color: #888;
+        }
+
+        .video-actions {
+            padding: 16px 20px;
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: #444;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-section {
+            display: none;
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 30px;
+        }
+
+        .results-section.active {
+            display: block;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #252525;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .timeline {
+            position: relative;
+            height: 60px;
+            background: #252525;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .timeline-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            opacity: 0.3;
+            border-radius: 8px;
+        }
+
+        .timeline-issue {
+            position: absolute;
+            height: 100%;
+            background: #ff4757;
+            opacity: 0.7;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .timeline-issue:hover {
+            opacity: 1;
+        }
+
+        .timeline-issue::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 4px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 80px;
+        }
+
+        .issues-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .issue-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: #252525;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .issue-item:hover {
+            background: #2d2d2d;
+        }
+
+        .issue-type {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-right: 12px;
+        }
+
+        .issue-type.filler {
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+        }
+
+        .issue-type.repeat {
+            background: rgba(255, 165, 2, 0.2);
+            color: #ffa502;
+        }
+
+        .issue-type.pause {
+            background: rgba(45, 156, 219, 0.2);
+            color: #2d9cdb;
+        }
+
+        .issue-time {
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 13px;
+            color: #888;
+            margin-right: 12px;
+        }
+
+        .issue-word {
+            flex: 1;
+            color: #ccc;
+            font-size: 14px;
+        }
+
+        .issue-action {
+            color: #667eea;
+            font-size: 13px;
+        }
+
+        .transcript-section {
+            margin-top: 24px;
+        }
+
+        .transcript-content {
+            background: #252525;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 14px;
+            line-height: 1.8;
+            color: #ccc;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .transcript-highlight {
+            background: rgba(255, 71, 87, 0.3);
+            border-radius: 2px;
+            padding: 0 2px;
+        }
+
+        .export-section {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+        }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-content {
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #333;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #ccc;
+            font-size: 14px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: #333;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+            z-index: 1001;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            background: #2ed573;
+        }
+
+        .toast.error {
+            background: #ff4757;
+        }
+
+        .settings-section {
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .settings-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings-label {
+            width: 120px;
+            font-size: 14px;
+            color: #888;
+        }
+
+        .settings-input {
+            flex: 1;
+            padding: 8px 12px;
+            background: #252525;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .settings-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .ffmpeg-cmd {
+            background: #0d0d0d;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 13px;
+            color: #888;
+            overflow-x: auto;
+            margin-top: 16px;
+        }
+
+        .ffmpeg-cmd code {
+            color: #ccc;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>口播视频智能剪辑</h1>
+            <p class="subtitle">识别语气词、停顿和重复内容，智能分析视频脚本</p>
+        </header>
+
+        <!-- 设置区域 -->
+        <div class="settings-section">
+            <div class="settings-row">
+                <span class="settings-label">API 地址</span>
+                <input type="text" id="apiUrl" class="settings-input" placeholder="http://localhost:5000/api/analyze" value="http://localhost:5000/api/analyze">
+            </div>
+            <div class="settings-row">
+                <span class="settings-label">视频文件</span>
+                <input type="text" id="videoUrl" class="settings-input" placeholder="支持本地路径或 URL">
+            </div>
+        </div>
+
+        <!-- 上传区域 -->
+        <div class="upload-section" id="uploadSection">
+            <div class="upload-icon">📹</div>
+            <p class="upload-text">
+                拖拽视频文件到此处，或 <span>点击选择</span>
+            </p>
+            <p class="upload-text" style="font-size: 12px; margin-top: 8px; color: #666;">
+                支持 MP4, MOV, AVI, MKV 格式
+            </p>
+            <input type="file" id="fileInput" accept="video/*">
+        </div>
+
+        <!-- 视频预览 -->
+        <div class="video-preview" id="videoPreview">
+            <div class="video-container">
+                <video id="videoPlayer" controls></video>
+            </div>
+            <div class="video-info">
+                <span class="video-name" id="videoName">video.mp4</span>
+                <span class="video-duration" id="videoDuration">00:00</span>
+            </div>
+            <div class="video-actions">
+                <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeVideo()">
+                    🔍 开始分析
+                </button>
+                <button class="btn btn-secondary" onclick="changeVideo()">
+                    更换视频
+                </button>
+            </div>
+        </div>
+
+        <!-- 分析结果 -->
+        <div class="results-section" id="resultsSection">
+            <h2 class="section-title">📊 分析结果</h2>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="statTotalIssues">0</div>
+                    <div class="stat-label">问题总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statFillerWords">0</div>
+                    <div class="stat-label">语气词</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statRepeats">0</div>
+                    <div class="stat-label">重复内容</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statRemoveTime">0s</div>
+                    <div class="stat-label">建议删除</div>
+                </div>
+            </div>
+
+            <!-- 时间线 -->
+            <div class="section-title">⏱️ 问题时间线</div>
+            <div class="timeline" id="timeline">
+                <div class="timeline-progress" id="timelineProgress"></div>
+                <!-- 问题标记会动态插入 -->
+            </div>
+
+            <!-- 问题列表 -->
+            <div class="section-title">📋 问题详情</div>
+            <div class="issues-list" id="issuesList">
+                <!-- 问题项会动态插入 -->
+            </div>
+
+            <!-- 转写文本 -->
+            <div class="transcript-section">
+                <div class="section-title">📝 完整转写</div>
+                <div class="transcript-content" id="transcriptContent">
+                    暂无转写文本
+                </div>
+            </div>
+
+            <!-- 导出选项 -->
+            <div class="export-section">
+                <button class="btn btn-primary" onclick="exportReport('markdown')">
+                    📄 导出报告 (Markdown)
+                </button>
+                <button class="btn btn-secondary" onclick="exportReport('json')">
+                    📋 导出数据 (JSON)
+                </button>
+                <button class="btn btn-secondary" onclick="copyFFmpegCmd()">
+                    📋 复制 FFmpeg 命令
+                </button>
+            </div>
+
+            <!-- FFmpeg 命令 -->
+            <div class="ffmpeg-cmd hidden" id="ffmpegCmd">
+                <code id="ffmpegCmdText"></code>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载动画 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p class="loading-text" id="loadingText">正在分析视频...</p>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // 全局变量
+        let currentVideoFile = null;
+        let analysisResult = null;
+
+        // DOM 元素
+        const uploadSection = document.getElementById('uploadSection');
+        const fileInput = document.getElementById('fileInput');
+        const videoPreview = document.getElementById('videoPreview');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const videoName = document.getElementById('videoName');
+        const videoDuration = document.getElementById('videoDuration');
+        const resultsSection = document.getElementById('resultsSection');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        const toast = document.getElementById('toast');
+
+        // 文件上传处理
+        uploadSection.addEventListener('click', () => fileInput.click());
+        
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.classList.add('dragover');
+        });
+        
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.classList.remove('dragover');
+        });
+        
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleVideoFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleVideoFile(e.target.files[0]);
+            }
+        });
+
+        // 处理视频文件
+        function handleVideoFile(file) {
+            if (!file.type.startsWith('video/')) {
+                showToast('请选择视频文件', 'error');
+                return;
+            }
+
+            currentVideoFile = file;
+            const url = URL.createObjectURL(file);
+            
+            videoPlayer.src = url;
+            videoName.textContent = file.name;
+            
+            videoPlayer.onloadedmetadata = () => {
+                videoDuration.textContent = formatTime(videoPlayer.duration);
+            };
+
+            uploadSection.style.display = 'none';
+            videoPreview.classList.add('active');
+            resultsSection.classList.remove('active');
+        }
+
+        // 更换视频
+        function changeVideo() {
+            currentVideoFile = null;
+            analysisResult = null;
+            videoPlayer.src = '';
+            fileInput.value = '';
+            uploadSection.style.display = 'block';
+            videoPreview.classList.remove('active');
+            resultsSection.classList.remove('active');
+        }
+
+        // 分析视频
+        async function analyzeVideo() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const videoUrlInput = document.getElementById('videoUrl').value;
+
+            if (!currentVideoFile && !videoUrlInput) {
+                showToast('请选择视频文件或输入视频 URL', 'error');
+                return;
+            }
+
+            showLoading('正在上传视频...');
+
+            try {
+                let videoPath;
+                
+                if (currentVideoFile) {
+                    // 上传文件
+                    const formData = new FormData();
+                    formData.append('video', currentVideoFile);
+                    
+                    const uploadResponse = await fetch(apiUrl.replace('/analyze', '/upload'), {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (!uploadResponse.ok) {
+                        throw new Error('视频上传失败');
+                    }
+
+                    const uploadResult = await uploadResponse.json();
+                    videoPath = uploadResult.path;
+                } else {
+                    videoPath = videoUrlInput;
+                }
+
+                showLoading('正在分析视频...');
+
+                // 调用分析 API
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ video_path: videoPath })
+                });
+
+                if (!response.ok) {
+                    throw new Error('分析请求失败');
+                }
+
+                analysisResult = await response.json();
+                displayResults(analysisResult);
+                showToast('分析完成！', 'success');
+
+            } catch (error) {
+                console.error('分析失败:', error);
+                showToast('分析失败: ' + error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 显示分析结果
+        function displayResults(result) {
+            // 更新统计
+            document.getElementById('statTotalIssues').textContent = result.total_issue_count || 0;
+            document.getElementById('statFillerWords').textContent = result.filler_count || 0;
+            document.getElementById('statRepeats').textContent = result.repeat_count || 0;
+            document.getElementById('statRemoveTime').textContent = (result.total_remove_duration || 0).toFixed(1) + 's';
+
+            // 渲染时间线
+            renderTimeline(result.issues || [], result.total_duration || videoPlayer.duration);
+
+            // 渲染问题列表
+            renderIssuesList(result.issues || []);
+
+            // 渲染转写文本
+            const transcriptEl = document.getElementById('transcriptContent');
+            if (result.transcript) {
+                transcriptEl.innerHTML = highlightTranscript(result.transcript, result.issues || []);
+            } else {
+                transcriptEl.innerHTML = '暂无转写文本';
+            }
+
+            // 保存 FFmpeg 命令
+            if (result.ffmpeg_cmd) {
+                document.getElementById('ffmpegCmdText').textContent = result.ffmpeg_cmd;
+                document.getElementById('ffmpegCmd').classList.remove('hidden');
+            }
+
+            resultsSection.classList.add('active');
+        }
+
+        // 渲染时间线
+        function renderTimeline(issues, totalDuration) {
+            const timeline = document.getElementById('timeline');
+            const progress = document.getElementById('timelineProgress');
+            
+            // 清除旧的问题标记
+            timeline.querySelectorAll('.timeline-issue').forEach(el => el.remove());
+            
+            // 设置进度条
+            progress.style.width = '100%';
+
+            // 添加问题标记
+            issues.forEach(issue => {
+                const marker = document.createElement('div');
+                marker.className = 'timeline-issue';
+                marker.setAttribute('data-label', issue.type + ': ' + issue.word);
+                
+                const startPercent = (issue.start_time / totalDuration) * 100;
+                const widthPercent = ((issue.end_time - issue.start_time) / totalDuration) * 100;
+                
+                marker.style.left = startPercent + '%';
+                marker.style.width = Math.max(widthPercent, 1) + '%';
+                
+                marker.onclick = () => {
+                    videoPlayer.currentTime = issue.start_time;
+                    videoPlayer.play();
+                };
+                
+                timeline.appendChild(marker);
+            });
+        }
+
+        // 渲染问题列表
+        function renderIssuesList(issues) {
+            const list = document.getElementById('issuesList');
+            list.innerHTML = '';
+
+            issues.forEach((issue, index) => {
+                const item = document.createElement('div');
+                item.className = 'issue-item';
+                item.onclick = () => {
+                    videoPlayer.currentTime = issue.start_time;
+                    videoPlayer.play();
+                };
+                
+                item.innerHTML = `
+                    <span class="issue-type ${issue.type === '语气词' ? 'filler' : issue.type === '重复' ? 'repeat' : 'pause'}">${issue.type}</span>
+                    <span class="issue-time">${formatTime(issue.start_time)} - ${formatTime(issue.end_time)}</span>
+                    <span class="issue-word">${issue.word}</span>
+                    <span class="issue-action">点击跳转 →</span>
+                `;
+                
+                list.appendChild(item);
+            });
+
+            if (issues.length === 0) {
+                list.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">未发现问题内容 ✓</p>';
+            }
+        }
+
+        // 高亮转写文本中的问题词
+        function highlightTranscript(transcript, issues) {
+            let highlighted = transcript;
+            
+            issues.forEach(issue => {
+                const regex = new RegExp(issue.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+                highlighted = highlighted.replace(regex, `<span class="transcript-highlight">${issue.word}</span>`);
+            });
+            
+            return highlighted;
+        }
+
+        // 导出报告
+        function exportReport(format) {
+            if (!analysisResult) {
+                showToast('请先分析视频', 'error');
+                return;
+            }
+
+            if (format === 'markdown') {
+                downloadFile(generateMarkdownReport(), 'analysis_report.md', 'text/markdown');
+            } else if (format === 'json') {
+                downloadFile(JSON.stringify(analysisResult, null, 2), 'analysis_data.json', 'application/json');
+            }
+        }
+
+        // 生成 Markdown 报告
+        function generateMarkdownReport() {
+            if (!analysisResult) return '';
+            
+            const result = analysisResult;
+            let md = '# 口播分析报告\n\n';
+            md += `**视频文件**: ${currentVideoFile?.name || '未知'}\n`;
+            md += `**分析时间**: ${new Date().toLocaleString()}\n\n`;
+            md += '## 统计摘要\n\n';
+            md += `- 问题总数: ${result.total_issue_count || 0}\n`;
+            md += `- 语气词: ${result.filler_count || 0}\n`;
+            md += `- 重复内容: ${result.repeat_count || 0}\n`;
+            md += `- 建议删除: ${(result.total_remove_duration || 0).toFixed(1)} 秒\n\n`;
+            md += '## 问题列表\n\n';
+            md += '| 类型 | 时间范围 | 内容 | 建议 |\n';
+            md += '|------|----------|------|------|\n';
+            
+            (result.issues || []).forEach(issue => {
+                md += `| ${issue.type} | ${formatTime(issue.start_time)} - ${formatTime(issue.end_time)} | ${issue.word} | ${issue.suggestion} |\n`;
+            });
+            
+            md += '\n## 完整转写\n\n';
+            md += result.transcript || '（无）\n';
+            
+            md += '\n## FFmpeg 剪切命令\n\n';
+            md += '```bash\n' + (result.ffmpeg_cmd || '# 无') + '\n```\n';
+            
+            return md;
+        }
+
+        // 下载文件
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('导出成功', 'success');
+        }
+
+        // 复制 FFmpeg 命令
+        function copyFFmpegCmd() {
+            if (!analysisResult || !analysisResult.ffmpeg_cmd) {
+                showToast('无可用命令', 'error');
+                return;
+            }
+            
+            navigator.clipboard.writeText(analysisResult.ffmpeg_cmd).then(() => {
+                showToast('已复制到剪贴板', 'success');
+            }).catch(() => {
+                showToast('复制失败', 'error');
+            });
+        }
+
+        // 工具函数
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function showLoading(text) {
+            loadingText.textContent = text;
+            loadingOverlay.classList.add('active');
+        }
+
+        function hideLoading() {
+            loadingOverlay.classList.remove('active');
+        }
+
+        function showToast(message, type = 'info') {
+            toast.textContent = message;
+            toast.className = 'toast ' + type;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && videoPlayer.paused) {
+                e.preventDefault();
+                videoPlayer.play();
+            }
+        });
+    </script>
+</body>
+</html>
