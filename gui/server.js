@@ -8,13 +8,20 @@ const PORT = 3005;
 const SKILL_DIR = path.resolve(__dirname, '..');             // 指向 clipAnnouncement
 const ENV_PATH = path.join(SKILL_DIR, '.env');
 
-// 加载环境变量
+// 加载环境变量并处理路径
 const env = {};
 if (fs.existsSync(ENV_PATH)) {
     const content = fs.readFileSync(ENV_PATH, 'utf-8');
     content.split('\n').forEach(line => {
         const [key, ...val] = line.split('=');
-        if (key) env[key.trim()] = val.join('=').trim();
+        if (key) {
+            let value = val.join('=').trim();
+            // 如果是 FFmpeg 相关的路径且是相对路径，将其转为绝对路径
+            if ((key.trim().includes('PATH')) && value.startsWith('.')) {
+                value = path.resolve(SKILL_DIR, value);
+            }
+            env[key.trim()] = value;
+        }
     });
 }
 
@@ -134,14 +141,35 @@ const server = http.createServer(async (req, res) => {
 
                 // 自动寻找 FFmpeg 路径
                 let ffmpeg = env.FFMPEG_PATH || 'ffmpeg';
+                let ffprobe = env.FFPROBE_PATH || 'ffprobe';
+                
+                // 兜底逻辑：如果路径错误（缺少 FFmpeg 目录），自动修正
+                if (ffmpeg.includes('.\\Windows\\ffmpeg')) {
+                    const fixedPath = ffmpeg.replace('.\\Windows\\ffmpeg', '.\\FFmpeg\\Windows\\ffmpeg');
+                    if (fs.existsSync(path.resolve(SKILL_DIR, fixedPath))) {
+                        ffmpeg = path.resolve(SKILL_DIR, fixedPath);
+                    }
+                }
+                if (ffprobe.includes('.\\Windows\\ffmpeg')) {
+                    const fixedPath = ffprobe.replace('.\\Windows\\ffmpeg', '.\\FFmpeg\\Windows\\ffmpeg');
+                    if (fs.existsSync(path.resolve(SKILL_DIR, fixedPath))) {
+                        ffprobe = path.resolve(SKILL_DIR, fixedPath);
+                    }
+                }
+
                 const bundledFfmpeg = path.join(SKILL_DIR, 'FFmpeg', 'Windows', 'ffmpeg', 'bin', 'ffmpeg.exe');
                 const bundledFfprobe = path.join(SKILL_DIR, 'FFmpeg', 'Windows', 'ffmpeg', 'bin', 'ffprobe.exe');
                 
                 if (ffmpeg === 'ffmpeg' && fs.existsSync(bundledFfmpeg)) {
                     ffmpeg = bundledFfmpeg;
+                    ffprobe = bundledFfprobe;
                     console.log(`✅ 使用项目内置 FFmpeg: ${ffmpeg}`);
                 } else {
-                    console.log(`ℹ️ 使用系统 FFmpeg: ${ffmpeg}`);
+                    // 确保路径是绝对路径
+                    if (ffmpeg !== 'ffmpeg' && !path.isAbsolute(ffmpeg)) {
+                        ffmpeg = path.resolve(SKILL_DIR, ffmpeg);
+                    }
+                    console.log(`ℹ️ 最终使用的 FFmpeg 路径: ${ffmpeg}`);
                 }
                 
                 // 验证可执行文件是否存在
@@ -199,7 +227,7 @@ const server = http.createServer(async (req, res) => {
                 }
                 
                 const resultPath = path.join(currentProjectDir, '1_转录', 'volcengine_result.json');
-                const subPath = path.join(currentProjectDir, '1_转录', 'subtitles_words.json');
+                const subPath = path.join(currentProjectDir, '1_转录', 'word_timestamps.json');
                 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 if (fs.existsSync(resultPath) && fs.existsSync(subPath)) {
@@ -219,6 +247,7 @@ const server = http.createServer(async (req, res) => {
                     if (ffmpeg === 'ffmpeg' && fs.existsSync(bundledFfmpeg)) {
                         ffmpeg = bundledFfmpeg;
                     }
+                    console.log(`✅ 使用 FFmpeg: ${ffmpeg}`);
                     const extractArgs = [
                         '-i', currentVideoPath,
                         '-q:a', '0',
@@ -325,12 +354,35 @@ const server = http.createServer(async (req, res) => {
                     currentVideoPath = videoPath;
                 }
                 
-                const subPath = path.join(currentProjectDir, '1_转录', 'subtitles_words.json');
+                const subPath = path.join(currentProjectDir, '1_转录', 'word_timestamps.json');
                 if (!fs.existsSync(subPath)) throw new Error('找不到转录结果文件，请先进行转录。');
                 
                 const words = JSON.parse(fs.readFileSync(subPath, 'utf-8'));
                 const autoSelected = [];
-                words.forEach((w, i) => { if (w.isGap) autoSelected.push(i); });
+                const fillerWords = ['嗯', '啊', '呃', '额', '哦', '噢', '唔', '这个', '那个'];
+                
+                words.forEach((w, i) => { 
+                    const text = (w.content || w.text || '').trim();
+                    
+                    // 1. 静音检测
+                    if (w.isSilence) {
+                        autoSelected.push(i);
+                        w.reason = '静音';
+                    } 
+                    // 2. 语气词检测
+                    else if (fillerWords.includes(text)) {
+                        autoSelected.push(i);
+                        w.reason = '语气词';
+                    }
+                    // 3. 简单的重复检测 (相邻词相同)
+                    else if (i > 0 && text === (words[i-1].content || words[i-1].text || '').trim() && text.length > 0) {
+                        autoSelected.push(i-1); // 标记前一个为重复
+                        words[i-1].reason = '卡顿';
+                    }
+                });
+
+                // 将带有 reason 的结果写回文件，方便 review.html 读取
+                fs.writeFileSync(subPath, JSON.stringify(words, null, 2));
                 fs.writeFileSync(path.join(currentProjectDir, '2_分析', 'auto_selected.json'), JSON.stringify(autoSelected));
 
                 const genReviewScript = path.join(SKILL_DIR, 'scripts', 'generate_review.js');
@@ -375,7 +427,22 @@ const server = http.createServer(async (req, res) => {
                     
                     // 自动寻找 FFmpeg/FFprobe 路径
                     let ffmpeg = env.FFMPEG_PATH || 'ffmpeg';
-                    let ffprobe = 'ffprobe';
+                    let ffprobe = env.FFPROBE_PATH || 'ffprobe';
+
+                    // 兜底逻辑：如果路径错误（缺少 FFmpeg 目录），自动修正
+                    if (ffmpeg.includes('.\\Windows\\ffmpeg')) {
+                        const fixedPath = ffmpeg.replace('.\\Windows\\ffmpeg', '.\\FFmpeg\\Windows\\ffmpeg');
+                        if (fs.existsSync(path.resolve(SKILL_DIR, fixedPath))) {
+                            ffmpeg = path.resolve(SKILL_DIR, fixedPath);
+                        }
+                    }
+                    if (ffprobe.includes('.\\Windows\\ffmpeg')) {
+                        const fixedPath = ffprobe.replace('.\\Windows\\ffmpeg', '.\\FFmpeg\\Windows\\ffmpeg');
+                        if (fs.existsSync(path.resolve(SKILL_DIR, fixedPath))) {
+                            ffprobe = path.resolve(SKILL_DIR, fixedPath);
+                        }
+                    }
+
                     const bundledFfmpeg = path.join(SKILL_DIR, 'FFmpeg', 'Windows', 'ffmpeg', 'bin', 'ffmpeg.exe');
                     const bundledFfprobe = path.join(SKILL_DIR, 'FFmpeg', 'Windows', 'ffmpeg', 'bin', 'ffprobe.exe');
                     
@@ -383,6 +450,10 @@ const server = http.createServer(async (req, res) => {
                         ffmpeg = bundledFfmpeg;
                         ffprobe = bundledFfprobe;
                     }
+
+                    // 确保是绝对路径
+                    if (ffmpeg !== 'ffmpeg' && !path.isAbsolute(ffmpeg)) ffmpeg = path.resolve(SKILL_DIR, ffmpeg);
+                    if (ffprobe !== 'ffprobe' && !path.isAbsolute(ffprobe)) ffprobe = path.resolve(SKILL_DIR, ffprobe);
 
                     // 1. 获取视频总时长
                     const probeArgs = ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', currentVideoPath];

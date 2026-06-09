@@ -32,4 +32,4 @@ output/
 *.swp
 /FFmpeg.Windows/Windows/
 ffmpeg.exe
-ffprobe.exe
+ffprobe.exe 

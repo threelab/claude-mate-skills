@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 // 命令行参数处理
-const timestampsFile = process.argv[2] || 'subtitles_words.json';
+const timestampsFile = process.argv[2] || 'word_timestamps.json';
 const selectedFile = process.argv[3] || 'auto_selected.json';
 const videoSource = process.argv[4] || 'video.mp4';
 

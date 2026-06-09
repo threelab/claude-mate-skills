@@ -789,18 +789,32 @@
     // ─── 章节分割（gap >= 1.5s） ───
     function buildChapters() {
       const chapters = [];
-      let current = { startIdx: 0, startTime: words.length ? words[0].start : 0, endTime: 0, suggestions: 0 };
+      let current = { 
+        startIdx: 0, 
+        startTime: words.length ? (words[0].begin || words[0].start || 0) : 0, 
+        endTime: 0, 
+        suggestions: 0 
+      };
 
       for (let i = 0; i < words.length; i++) {
         const w = words[i];
-        current.endTime = w.end;
+        const wStart = w.begin || w.start || 0;
+        const wEnd = w.finish || w.end || 0;
+        const isGap = w.isSilence || w.isGap;
+
+        current.endTime = wEnd;
         if (autoSelected.has(i)) current.suggestions++;
 
         // gap >= 1.5s → 新章节
-        if (w.isGap && (w.end - w.start) >= 1.5 && i < words.length - 1) {
+        if (isGap && (wEnd - wStart) >= 1.5 && i < words.length - 1) {
           current.endIdx = i;
           chapters.push(current);
-          current = { startIdx: i + 1, startTime: words[i + 1].start, endTime: 0, suggestions: 0 };
+          current = { 
+            startIdx: i + 1, 
+            startTime: words[i + 1].begin || words[i + 1].start || 0, 
+            endTime: 0, 
+            suggestions: 0 
+          };
         }
       }
       current.endIdx = words.length - 1;
@@ -811,9 +825,13 @@
     // ─── AI 建议统计 ───
     function categorize(i) {
       const w = words[i];
-      if (w.isGap) return 'silence';
-      const t = (w.text || '').trim().toLowerCase();
-      if (/^(嗯|啊|呃|额|哦|噢|唔|emm|em|uhm|uh|hmm|嘶)$/.test(t)) return 'filler';
+      if (w.isSilence || w.isGap || (w.reason && w.reason.includes('静音'))) return 'silence';
+      
+      const t = (w.content || w.text || '').trim().toLowerCase();
+      const isFiller = /^(嗯|啊|呃|额|哦|噢|唔|emm|em|uhm|uh|hmm|嘶|这个|那个)$/.test(t) || 
+                       (w.reason && w.reason.includes('语气词'));
+      
+      if (isFiller) return 'filler';
       if (w.reason && /重说|repeat/i.test(w.reason)) return 'repeat';
       if (w.reason && /卡顿|stutter/i.test(w.reason)) return 'stutter';
       if (w.reason && /残句/i.test(w.reason)) return 'incomplete';
@@ -831,6 +849,7 @@
 
     // ─── 渲染 ───
     function render() {
+      console.log('开始渲染, 单词数:', words.length);
       content.innerHTML = '';
       elements = new Array(words.length);
 
@@ -852,23 +871,24 @@
         // Words in this chapter
         for (let i = ch.startIdx; i <= ch.endIdx; i++) {
           const word = words[i];
-          const el = document.createElement(word.isGap ? 'span' : 'span');
-          el.className = word.isGap ? 'gap' : 'word';
+          const isSilence = word.isSilence || word.isGap;
+          const el = document.createElement('span');
+          el.className = isSilence ? 'gap' : 'word';
 
           if (selected.has(i)) el.classList.add('selected');
 
-          if (word.isGap) {
-            const duration = (word.end - word.start).toFixed(1);
+          if (isSilence) {
+            const duration = (word.finish - word.begin).toFixed(1);
             el.textContent = duration + 's';
           } else {
-            el.textContent = word.text;
+            el.textContent = word.content || word.text;
           }
 
           el.dataset.index = i;
 
           // 单击跳转
           el.onclick = (e) => {
-            if (!isSelecting) player.currentTime = word.start;
+            if (!isSelecting) player.currentTime = word.begin || word.start;
           };
 
           // 双击选中/取消
@@ -888,9 +908,9 @@
           elements[i] = el;
 
           // 非 gap 之间加空格
-          if (!word.isGap) {
+          if (!isSilence) {
             const next = words[i + 1];
-            if (next && !next.isGap && i < ch.endIdx) {
+            if (next && !(next.isSilence || next.isGap) && i < ch.endIdx) {
               content.appendChild(document.createTextNode(' '));
             }
           }
@@ -943,9 +963,12 @@
 
     function updateStats() {
       // Clip preview card
-      const totalDur = words.length ? words[words.length - 1].end - words[0].start : 0;
+      const totalDur = words.length ? (words[words.length - 1].finish || words[words.length - 1].end || 0) - (words[0].begin || words[0].start || 0) : 0;
       let deletedDur = 0;
-      selected.forEach(i => { deletedDur += words[i].end - words[i].start; });
+      selected.forEach(i => { 
+        const w = words[i];
+        deletedDur += (w.finish || w.end || 0) - (w.begin || w.start || 0); 
+      });
       const newDur = Math.max(0, totalDur - deletedDur);
       const pct = totalDur > 0 ? ((deletedDur / totalDur) * 100).toFixed(0) : 0;
       const keepPct = totalDur > 0 ? ((newDur / totalDur) * 100).toFixed(0) : 100;
@@ -1068,12 +1091,20 @@
       skipIntervals = [];
       let i = 0;
       while (i < sorted.length) {
-        let start = words[sorted[i]].start;
-        let end = words[sorted[i]].end;
+        const w = words[sorted[i]];
+        let start = w.begin || w.start || 0;
+        let end = w.finish || w.end || 0;
         let j = i + 1;
-        while (j < sorted.length && words[sorted[j]].start - end < 0.1) {
-          end = words[sorted[j]].end;
-          j++;
+        while (j < sorted.length) {
+          const nextW = words[sorted[j]];
+          const nextStart = nextW.begin || nextW.start || 0;
+          const nextEnd = nextW.finish || nextW.end || 0;
+          if (nextStart - end < 0.1) {
+            end = nextEnd;
+            j++;
+          } else {
+            break;
+          }
         }
         skipIntervals.push({ start: start - 0.05, end });
         i = j;
@@ -1146,7 +1177,10 @@
       // 高亮当前词
       let curr = -1;
       for (let i = 0; i < words.length; i++) {
-        if (t >= words[i].start && t < words[i].end) { curr = i; break; }
+        const w = words[i];
+        const wStart = w.begin || w.start || 0;
+        const wEnd = w.finish || w.end || 0;
+        if (t >= wStart && t < wEnd) { curr = i; break; }
       }
       if (curr !== lastHighlight) {
         if (lastHighlight >= 0 && elements[lastHighlight]) elements[lastHighlight].classList.remove('current');
@@ -1165,7 +1199,9 @@
       const sortedSelected = Array.from(selected).sort((a, b) => a - b);
       sortedSelected.forEach(i => {
         const word = words[i];
-        segments.push({ start: word.start, end: word.end });
+        const wStart = word.begin || word.start || 0;
+        const wEnd = word.finish || word.end || 0;
+        segments.push({ start: wStart, end: wEnd });
       });
 
       const merged = [];
@@ -1211,7 +1247,9 @@
       const sortedSelected = Array.from(selected).sort((a, b) => a - b);
       sortedSelected.forEach(i => {
         const word = words[i];
-        segments.push({ start: word.start, end: word.end });
+        const wStart = word.begin || word.start || 0;
+        const wEnd = word.finish || word.end || 0;
+        segments.push({ start: wStart, end: wEnd });
       });
 
       const overlay = document.getElementById('loadingOverlay');
